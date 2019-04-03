@@ -2,7 +2,7 @@ import serial
 import time
 import struct
 # Start with a basic flask app webpage.
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, send
 from flask import Flask, render_template, url_for, copy_current_request_context
 from random import random   
 from time import sleep                  
@@ -105,8 +105,12 @@ def test_connect():
 def test_disconnect():
     print('Client disconnected')
 
+# Handing data from the webpage from toggle buttons
+@socketio.on('message')
+def handleMessage(msg):
+    print('Message: ' + msg)
+    #send(msg, broadcast=True)
+
 
 if __name__ == '__main__':
-    socketio.run(app)
-
-    
+    socketio.run(app)    

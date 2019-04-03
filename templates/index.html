@@ -1279,6 +1279,7 @@
 				$('#autoStart').on('click', function() {
 					console.log("Clicked");
 					console.log($('#autoStartState').val());
+					socket.send("Clicked: " + $('#autoStartState').val());
 					if ($(this).is(":checked")) {
 						console.log("Auto Start ON");
 					} else {
