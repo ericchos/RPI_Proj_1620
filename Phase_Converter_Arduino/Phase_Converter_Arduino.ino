@@ -20,24 +20,24 @@ const byte UNUSED_RELAY = 6;   //To Pin D6
 const byte IDLER_RELAY = 5;    //To Pin D5
 const byte STARTCAP_RELAY = 4; //To Pin D4
 const byte LOAD_RELAY = 3;    //To Pin D3
+const byte IDLER_STATE = 10; //To Pin D10
 
 // Set the Voltage Limits
 const int IDLER_ON_LIMIT = 0; //VAC
 const int IDLER_OFF_LIMIT = 0; //VAC
-const int STARTCAP_TIME = 3 * 1000; //ms
-const int IDLER_RUNTIME = 3 * 60 * 1000; //ms
+#define STARTCAP_TIME 3000UL
+#define IDLER_RUNTIME 180000UL
 
 // Global Variables
-int lastPowerStatus = 0;
-int PowerStatus = 0; // Indicates if the power is on or off
+int lastPowerStatus = true;
+int PowerStatus = true; // Indicates if the power is on or off
 
 // Set Up Routine.Runs first in the Program
 void setup() {
   //Testing Mode. Comment out when not in use
-  testmode(); 
-  
-  PowerStatus = 0;
-  
+  //testmode(); 
+  PowerStatus = true;
+
   // Start Arduino to PC Serial Comm
   Serial.begin(9600); 
   
@@ -48,63 +48,51 @@ void setup() {
   pinMode(STARTCAP_RELAY, OUTPUT);
   pinMode(IDLER_RELAY, OUTPUT);
   pinMode(UNUSED_RELAY, OUTPUT);
+  pinMode(IDLER_STATE, INPUT);
   
   // Set Idler Voltage Sensor Parameters
   idler.voltage(IDLER_VTG, 248, 1.7);
   
   // Set Default States for the Relays
   digitalWrite(LOAD_RELAY, HIGH);   // EXTERNAL EQUIPMENT
-  digitalWrite(STARTCAP_RELAY, HIGH);  // START CAPACITORS
+  digitalWrite(STARTCAP_RELAY, LOW);  // START CAPACITORS
   digitalWrite(IDLER_RELAY, LOW);  // IDLER MOTOR
-  digitalWrite(UNUSED_RELAY, LOW);  // 
+  digitalWrite(UNUSED_RELAY, LOW);  // Unused Relay
 }
 
 // Main Loop. This repeats over the whole operation.
 void loop() {
-  
-  // Read Idler Voltage
-  idler.calcVI(10, 1024);
-  float idlerVoltage   = idler.Vrms;
-  
-  // Display Idler Voltage Reading on PC Terminal
-  Serial.print("Idler Voltage: ");
-  Serial.println(idlerVoltage);
-  Serial.print("Last Power Status= ");
-  Serial.println (PowerStatus);
-  
   // 1: Check if Raspberry Pi has sent start signal from detecting
   //    current from the equipment being powered on
-  if(digitalRead(RPIGPIO_20_START) == true 
-  && digitalRead(RPIGPIO_21_FINISH == false)){
+  if(digitalRead(RPIGPIO_20_START) == true && digitalRead(RPIGPIO_21_FINISH) == false){
+    Serial.println("Step 1: Shut down load. Start Capaciter & Idler");
     // Turn off the load relay and switch on the start caps
-    PowerStatus = true;
     digitalWrite(LOAD_RELAY, LOW);
-    digitalWrite(STARTCAP_RELAY, HIGH);
     digitalWrite(IDLER_RELAY, HIGH);
-    delay(STARTCAP_TIME);
-  }
-  // 2:If voltage is detected on the idler motor, then
-  //   turn off the start capcacitors and turn on the load
-  //   relay to run off the load power source
-  if(idlerVoltage >= 190 
-  && PowerStatus == true){
-    digitalWrite(STARTCAP_RELAY, LOW);
-    digitalWrite(IDLER_RELAY, HIGH);
+    
+    // 2:If voltage is detected on the idler motor, then
+    //   turn off the start capcacitors and turn on the load
+    //   relay to run off the load power source
+    Serial.println("Step 2: Waiting for Idler Voltage to Rise");
+    while(digitalRead(IDLER_STATE) != true);
+    delay(500);
+    Serial.println("Step 4: Ider Voltage has gone up. Turning off Start Caps & switching back to load");
     digitalWrite(LOAD_RELAY, HIGH);
-  }
-  // 3: If the Raspberry Pi detects low current due to the 
-  //    user shutting off the equipment, the load circuit 
-  //    will be disconnected and the idler motor will run for
-  //    3 minutes before shutting off.
-  if(digitalRead(RPIGPIO_20_START) == true 
-    && digitalRead(RPIGPIO_21_FINISH == false)){
-      PowerStatus =false;
-      digitalWrite(LOAD_RELAY, LOW);
-      digitalWrite(STARTCAP_RELAY, LOW);
-      
-      // Let Idler run for awhile before shutting down
-      delay(IDLER_RUNTIME);
-      digitalWrite(IDLER_RELAY, LOW);
+    
+    // 4: If the Raspberry Pi detects low current due to the 
+    //    user shutting off the equipment, the load circuit 
+    //    will be disconnected and the idler motor will run for
+    //    3 minutes before shutting off.
+    while(digitalRead(RPIGPIO_20_START) != false && digitalRead(RPIGPIO_21_FINISH) != true);
+    
+    // Shut down sequence
+    Serial.println("Step 5: Shut Down Sequence.");
+    digitalWrite(LOAD_RELAY, HIGH);
+    digitalWrite(IDLER_RELAY, LOW);
+    delay(1000);
+    
+    //Wait for user to power on again
+    //while(digitalRead(RPIGPIO_20_START) != true && digitalRead(RPIGPIO_21_FINISH) != false);
   }
 }
 
@@ -120,16 +108,19 @@ void testmode(){
   Serial.begin(9600);
   
   //Set Relay Pin Direction
+  pinMode(13, OUTPUT);
   pinMode(6, OUTPUT);
   pinMode(5, OUTPUT);
   pinMode(4, OUTPUT);
   pinMode(3, OUTPUT);
   
   //Set the Initial Relay States
-  byte relay1 = 1;
-  byte relay2 = 0;
-  byte relay3 = 0;
-  byte relay4 = 0;
+  byte test = HIGH;
+  byte relay1 = HIGH;
+  byte relay2 = LOW;
+  byte relay3 = LOW;
+  byte relay4 = LOW;
+  digitalWrite(13, test);
   digitalWrite(6, relay1);
   digitalWrite(5, relay2);
   digitalWrite(4, relay3);
@@ -164,7 +155,15 @@ void testmode(){
         Serial.print("Switching Relay 4: ");
         Serial.println(relay4);
         break;
+      case '5':
+        test = !test;
+        digitalWrite(13, test);
+        Serial.print("LED 13: ");
+        Serial.println(test);
+        break;
+      case '6':
+        Serial.print(analogRead(A0));
+        break;
     }
   }
 }
-

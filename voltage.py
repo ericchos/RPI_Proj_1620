@@ -44,7 +44,7 @@ GPIO.output(RELAY_END, False)
 
 #Set Upper & Lower Limits for the Current
 AMP_UPPER_LIMIT = 1.0 #~A: Turn ON when greater than
-AMP_LOWER_LIMIT = 1.0 #~A: Shut OFF when lower than
+AMP_LOWER_LIMIT = 0.05 #~A: Shut OFF when lower than
 
 
 #random number Generator Thread
@@ -177,6 +177,7 @@ def test_disconnect():
 
 def test_all_readings():
     while 1:
+        #var string = 
         print("Checking readiness")
         print(sensor.isReady())
         print("Reading voltage")
@@ -194,19 +195,23 @@ def test_all_readings():
 if __name__ == '__main__':
     #test_all_readings() #Uncomment if you want to test
     #Run Webserver
-    socketio.run(app)
+    #socketio.run(app)
     
     #Initialize AC Voltage/Current Sensor
     sensor = PZEM()
 
+    currentState = False
+    lastState = False
+
     # Main Loop
     while 1:
-        print("Checking Readiness")
+        #print("Checking Readiness")
         sensor.isReady()
         print(sensor.isReady())
         # Check if there's a load current
-        print("Reading Sensor")
-        print(sensor.readCurrent())
+        #print("Reading Sensor")
+        print(str(sensor.readVoltage()) + "VAC") 
+        print(str(sensor.readCurrent()) + "A")
         if sensor.readCurrent() > AMP_UPPER_LIMIT:
             # Send GPIO Signal to Arduino to Switch Load Relay
             print("Current Detected. Starting Sequence")
@@ -218,5 +223,5 @@ if __name__ == '__main__':
             GPIO.output(RELAY_START, False)
             GPIO.output(RELAY_END, True)
         
-        socketio.emit('newnumber', {'number': sensor.readVoltage()}, namespace='/test')
+        #socketio.emit('newnumber', {'number': sensor.readVoltage()}, namespace='/test')
  
