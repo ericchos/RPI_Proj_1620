@@ -1,4 +1,4 @@
-/*******************************************************************
+/**********************************************************************************************
  * Self-Starting Rotary Phase Converter
  * 
  * Client - Glen Phoenix Phase Converters
@@ -9,53 +9,55 @@
  *
  * Last Revision by Eric Cho on March 2018: 
  * https://www.github.com/ericchos/RPI_Proj_1620
-*******************************************************************/
-
-// Settings
-//Defines whether debug output will be used. Comment out if not using 
-#define DEBUG 
+**********************************************************************************************/
+/*
+ * SETTINGS
+ */
+#define DEBUG //Defines whether debug output will be used. Comment out if not using 
+//#define PZEM_SENSOR 1
+//#define ANALOG_DETECT 1
+#define ONOFF_DETECT  1
+ 
 #ifdef DEBUG 
   #define D(x) Serial.print(x)
 #else
   #define D(x)
 #endif
 
+// Include Libraries
+#ifdef PZEM_SENSOR
 #include <PZEM004T.h>
 #include <SoftwareSerial.h>
-#include "EmonLib.h"  // Include Emon Library
-EnergyMonitor idler;  // SMAKN Voltage Transformer Module 
 PZEM004T pzem(12,11);  // (RX,TX) connect to TX,RX of PZEM
 IPAddress ip(192,168,1,1);
+#endif
 
 // Arduino Pin Definitions
 const byte IDLER_VTG = A0;          //Analog Input To Pin A0
-const byte RPIGPIO_20_START = A1;   //From Rapsberry PI GPIO20
-const byte RPIGPIO_21_FINISH = A2;  //From Rapsberry PI GPIO21
-const byte UNUSED_RELAY = 6;        //To Pin D6 
-const byte LOAD_RELAY = 3;          //To Pin D3
-const byte IDLER_RELAY = 4;         //To Pin D5
-const byte STARTCAP_RELAY = 5;      //To Pin D4
-const byte IDLER_STATE = 10;        //To Pin D10
-const byte LED = 13;
+const byte RPIGPIO_20_START = A1;   //Input <- From Rapsberry PI GPIO20
+const byte RPIGPIO_21_FINISH = A2;  //Input <- From Rapsberry PI GPIO21
+const byte IDLER_STATE = 10;        //Input <- To Pin D10
+const byte UNUSED_RELAY = 6;        //Output -> To Pin D6 
+const byte LOAD_RELAY = 3;          //Output -> To Pin D3
+const byte IDLER_RELAY = 4;         //Output -> To Pin D5
+const byte STARTCAP_RELAY = 5;      //Output -> To Pin D4
+const byte LED = 13;                //Output -> To Pin D13 Arduino Onboard LED
 
-// Set the Voltage Limits
+// Set Constants used for triggering values
 const int IDLER_ON_LIMIT = 0; //VAC
 const int IDLER_OFF_LIMIT = 0; //VAC
-#define STARTCAP_TIME 3000UL
-#define IDLER_RUNTIME 180000UL
+const float SETPOINT = 1.0;
 
 // Global Variables
-int lastPowerStatus = true;
-int PowerStatus = true; // Indicates if the power is on or off
+unsigned int loadSensor = 0; // Value of the Load Current used to trigger relay sequence
 
 // Set Up Routine.Runs first in the Program
 void setup() {
   //Testing Mode. Comment out when not in use
   //testmode(); 
-  PowerStatus = true;
 
   // Start Arduino to PC Serial Comm
-  Serial.begin(115200);
+  Serial.begin(9600);
   
   // Set Arduino GPIO pins to Output
   pinMode(RPIGPIO_20_START, INPUT);
@@ -67,64 +69,71 @@ void setup() {
   pinMode(IDLER_STATE, INPUT);
   pinMode(LED, OUTPUT);
   
-  // Set Idler Voltage Sensor Parameters
-  idler.voltage(IDLER_VTG, 248, 1.7);
-  
   // Set Default States for the Relays
   digitalWrite(LOAD_RELAY, HIGH);   // EXTERNAL EQUIPMENT. NORMALLY CLOSED
   digitalWrite(STARTCAP_RELAY, LOW);  // START CAPACITORS
   digitalWrite(IDLER_RELAY, LOW);  // IDLER MOTOR
   digitalWrite(UNUSED_RELAY, LOW);  // Unused Relay
-  /*
-  while(1){
-    float v = pzem.voltage(ip);
-    float i = pzem.current(ip);
-    Serial.print(v);
-    Serial.print(" VAC ");
-    Serial.print(i);
-    Serial.println(" ~A");
-  }
-  */
 }
 
-#define SETPOINT 1.0
 // Main Loop. This repeats over the whole operation.
 void loop() {
-  //float v = pzem.voltage(ip);
-  float i = pzem.current(ip);
-  
-  // 1: Check if Raspberry Pi has sent start signal from detecting
-  //    current from the equipment being powered on
-  if(i >= SETPOINT){
+/*
+ * Step 1: Take Sensor Measurement for the load current
+ */
+#ifdef CURRENT_DETECT 
+  loadSensor = (unsigned int)pzem.current(ip); // Load Current in Amps
+#elif ANALOG_DETECT 
+  loadSensor = analogRead(A0);
+#elif ONOFF_DETECT 
+  loadSensor = digitalRead(A0);
+#endif
+  D(loadSensor + "\r\n");
+
+/*
+ * Step 2: Check if Load amperage is detected
+ */
+  if(loadSensor >= SETPOINT || loadSensor == true){
     digitalWrite(LED, HIGH);
-    Serial.println("Step 1: Shut down load. Start Capaciter & Idler");
+    D("Step 1: Shut down load. Start Capaciter & Idler\r\n");
     // Turn off the load relay and switch on the start caps
     digitalWrite(LOAD_RELAY, LOW);
     digitalWrite(IDLER_RELAY, HIGH);
     delay(10);
-    
-    // 2:If voltage is detected on the idler motor, then
-    //   turn off the start capcacitors and turn on the load
-    //   relay to run off the load power source
-    Serial.println("Step 2: Waiting for Idler Voltage to Rise");
+
+/*
+ * Step 3: If voltage is detected on the idler motor, then
+ * turn off the start capcacitors and turn on the load
+ * relay to run off the load power source
+ */
+    D("Step 2: Waiting for Idler Voltage to Rise\r\n");
     while(digitalRead(IDLER_STATE) != true)
       delay(10);
     delay(500);
-    Serial.println("Step 4: Ider Voltage has gone up. Turning off Start Caps & switching back to load");
+    D("Step 4: Ider Voltage has gone up. Turning off Start Caps & switching back to load\r\n");
     digitalWrite(LOAD_RELAY, HIGH);
     
-    // 4: If the Raspberry Pi detects low current due to the 
-    //    user shutting off the equipment, the load circuit 
-    //    will be disconnected and the idler motor will continue to run.
-    
+/*
+ * Step 4: If the Raspberry Pi detects low current due to the 
+ * user shutting off the equipment, the load circuit
+ * will be disconnected and the idler motor will continue to run.
+ */
+#ifdef PZEM_SENSOR
     do{
-      i = pzem.current(ip);
-      Serial.println(i);
+      loadSensor = (unsigned int)pzem.current(ip);
+      D(loadSensor + "\r\n");
       delay(10);
     }while(i > 1.0);
-    
-    // Shut down sequence
-    Serial.println("Step 5: Shut Down Sequence.");
+#elif ANALOG_DETECT
+    while(analogRead(A0) <= SETPOINT);
+#elif ONOFF_DETECT
+    while(digitalRead(A0) != false);
+#endif
+
+/*
+ * Step 5: Shut down sequence
+ */
+    D("Step 5: Shut Down Sequence.\r\n");
     digitalWrite(LOAD_RELAY, HIGH);
     digitalWrite(IDLER_RELAY, LOW);
     delay(100);
@@ -132,6 +141,9 @@ void loop() {
   }
 }
 
+/*
+ * Take analog readings and average them
+ */
 float analogAverage(int pin){
   float average = 0;
   for(int i = 0; i<300; i++){
@@ -178,25 +190,25 @@ void testmode(){
       case '1':
         relay1 = !relay1;
         digitalWrite(6, relay1);
-        Serial.print("Switching Load Relay: ");
+        Serial.print("Relay D6: ");
         Serial.println(relay1);
         break;
       case '2':
         relay2 = !relay2;
         digitalWrite(5, relay2);
-        Serial.print("Switching Start Capacitor Relay: ");
+        Serial.print("Relay D5: ");
         Serial.println(relay2);
         break;
       case '3':
         relay3 = !relay3;
-        digitalWrite(4, relay3);
-        Serial.print("Switching IDLER Relay: ");
+        digitalWrite(4, relay4);
+        Serial.print("Relay D4: ");
         Serial.println(relay3);
         break;
       case '4':
         relay4 = !relay4;
-        digitalWrite(3, relay4);
-        Serial.print("Switching Relay 4: ");
+        digitalWrite(3, relay3);
+        Serial.print("Relay D3: ");
         Serial.println(relay4);
         break;
       case '5':
