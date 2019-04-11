@@ -125,15 +125,25 @@ void loop() {
     D("\t Idler State: ");
     D(idlerState);
     D("(1 is ON. Less than 1 is OFF)\r\n");
+
+    D("Step 4: Waiting for start capcitors to discharge before running the load.\r\n");
+    idlerState = 1.0;
+    do{
+      idlerState = readAverage(IDLER_STATE, 1000);
+    }while(idlerState == SETPOINT);
+    D("\t Idler State: ");
+    D(idlerState);
+    D("(1 is ON. Less than 1 is OFF)\r\n");
+    delay(500); // Half-second delay
     digitalWrite(LOAD_RELAY, HIGH);
     digitalWrite(IDLER_RELAY, HIGH);
-    
+
 /*
  * Step 4: If the Raspberry Pi detects low current due to the 
  * user shutting off the equipment, the load circuit
  * will be disconnected and the idler motor will continue to run.
  */
-  D("Step 4: Unit will run until load current drops when user powers off their equipment\r\n");
+  D("Step 5: Unit will run until load current drops when user powers off their equipment\r\n");
 #ifdef PZEM_SENSOR
     do{
       loadSensor = (unsigned int)pzem.current(ip);
@@ -152,7 +162,7 @@ void loop() {
 /*
  * Step 5: Shut down sequence
  */
-    D("Step 5: Shut Down Sequence.\r\n");
+    D("Step 6: Shut Down Sequence.\r\n");
     D("\t Load State: ");
     D(loadState);
     D(" (1 is OFF. Less than 1 is ON)\r\n");
